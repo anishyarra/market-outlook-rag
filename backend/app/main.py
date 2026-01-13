@@ -34,6 +34,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        "https://*.vercel.app",
+        "https://market-outlook-rag-ashen.vercel.app"
     ],
     allow_credentials=False,
     allow_methods=["*"],
