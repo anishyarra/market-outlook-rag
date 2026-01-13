@@ -18,9 +18,12 @@ from dotenv import load_dotenv
 import glob
 from fastapi.responses import FileResponse
 
+from .store import get_collection
+
 # Load .env from repo root (market-outlook-rag/market-outlook-rag/.env)
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
-load_dotenv(dotenv_path=ENV_PATH, override=True)
+if ENV_PATH.exists():
+    load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 app = FastAPI(title="Market Outlook RAG (no-pdf)")
 
@@ -58,6 +61,7 @@ def whoami():
         "LLM_PROVIDER": os.getenv("LLM_PROVIDER"),
         "OPENAI_MODEL": os.getenv("OPENAI_MODEL"),
         "has_OPENAI_API_KEY": bool(os.getenv("OPENAI_API_KEY")),
+        "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL"),
     }
 
 @app.post("/upload")
@@ -100,12 +104,12 @@ async def chat(payload: ChatPayload):
     if not question:
         raise HTTPException(status_code=400, detail="Missing question")
 
-    # Single-doc mode: accept doc_id OR doc_ids and pick one
-    doc_id = payload.doc_id
-    if (not doc_id) and payload.doc_ids:
-        doc_id = payload.doc_ids[0]
-
-    return answer_question(question, doc_id=doc_id)
+    return answer_question(
+        question,
+        doc_id=payload.doc_id,
+        doc_ids=payload.doc_ids,
+        route=payload.route,
+    )
 
 @app.get("/debug-main")
 def debug_main():
@@ -115,8 +119,8 @@ def debug_main():
 def pdf(doc_id: str):
     docs_dir = get_paths()["docs_dir"]
 
-    # files are saved like: {doc_id}__{safe_name}.pdf
-    matches = glob.glob(os.path.join(docs_dir, f"{doc_id}__*.pdf"))
+    # upload saved as: {doc_id}__{safe_name}
+    matches = glob.glob(os.path.join(docs_dir, f"{doc_id}__*"))
     if not matches:
         raise HTTPException(status_code=404, detail="PDF not found for that doc_id")
 
@@ -128,7 +132,34 @@ def pdf(doc_id: str):
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
-
 @app.get("/routes")
 def routes():
     return sorted([getattr(r, "path", str(r)) for r in app.router.routes])
+
+@app.get("/documents")
+def documents():
+    """
+    Returns all uploaded documents known to the vector index (unique doc_id/doc_name).
+    Used by eval scripts + UI.
+    """
+    col = get_collection()
+
+    # Pull metadatas for all stored chunks and build a unique doc list
+    res = col.get(include=["metadatas"])
+    metas = res.get("metadatas") or []
+
+    by_id = {}
+    for md in metas:
+        if not md:
+            continue
+        did = md.get("doc_id")
+        if not did:
+            continue
+        if did not in by_id:
+            by_id[did] = {
+                "doc_id": did,
+                "doc_name": md.get("doc_name") or did,
+            }
+
+    # return stable ordering
+    return list(by_id.values())
