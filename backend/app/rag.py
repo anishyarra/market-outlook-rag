@@ -13,53 +13,79 @@ def _cite_snippet(text: str, max_len: int = 240) -> str:
     return (t[:max_len] + "…") if len(t) > max_len else t
 
 
-def retrieve(query: str, k: int = 12, doc_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    Basic vector retrieval from Chroma.
-    - If doc_id is provided, filter to that document via where={"doc_id": doc_id}.
-    - Pull extra results then truncate, to reduce junk.
-    """
+def retrieve(
+    query: str,
+    k: int = 12,
+    doc_id: Optional[str] = None,
+    doc_ids: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     col = get_collection()
-    where = {"doc_id": doc_id} if doc_id else None
 
-    n_raw = max(30, k * 4)
+    target_doc_ids = doc_ids or ([doc_id] if doc_id else None)
 
-    kwargs = dict(
-        query_texts=[query],
-        n_results=n_raw,
-        include=["documents", "metadatas", "distances"],
-    )
-    if where is not None:
-        kwargs["where"] = where
-
-    res = col.query(**kwargs)
-
-    docs = res["documents"][0]
-    metas = res["metadatas"][0]
-    dists = res.get("distances", [[None] * len(docs)])[0]
+    def run_query(where_doc_id: Optional[str], n: int):
+        kwargs = dict(
+            query_texts=[query],
+            n_results=n,
+            include=["documents", "metadatas", "distances"],
+        )
+        if where_doc_id:
+            kwargs["where"] = {"doc_id": where_doc_id}
+        return col.query(**kwargs)
 
     out: List[Dict[str, Any]] = []
-    for doc, meta, dist in zip(docs, metas, dists):
-        text = (doc or "").strip()
-        meta = meta or {}
-        out.append(
-            {
-                "text": text,
-                "snippet": _cite_snippet(text),
-                "metadata": meta,
-                "distance": dist,
-            }
-        )
 
-    # Sort by distance (lower is better)
+    if target_doc_ids:
+        # Allocate retrieval budget fairly across docs
+        # Example: if k=14 and 2 docs => ~7 per doc (plus buffer)
+        per_doc = max(4, (k // len(target_doc_ids)) + 2)
+
+        for did in target_doc_ids:
+            res = run_query(did, per_doc)
+            docs = res.get("documents", [[]])[0]
+            metas = res.get("metadatas", [[]])[0]
+            dists = res.get("distances", [[None] * len(docs)])[0]
+
+            for doc, meta, dist in zip(docs, metas, dists):
+                text = (doc or "").strip()
+                meta = meta or {}
+                out.append(
+                    {
+                        "text": text,
+                        "snippet": _cite_snippet(text),
+                        "metadata": meta,
+                        "distance": dist,
+                    }
+                )
+    else:
+        # Global query across all docs
+        n_raw = max(30, k * 4)
+        res = run_query(None, n_raw)
+        docs = res.get("documents", [[]])[0]
+        metas = res.get("metadatas", [[]])[0]
+        dists = res.get("distances", [[None] * len(docs)])[0]
+
+        for doc, meta, dist in zip(docs, metas, dists):
+            text = (doc or "").strip()
+            meta = meta or {}
+            out.append(
+                {
+                    "text": text,
+                    "snippet": _cite_snippet(text),
+                    "metadata": meta,
+                    "distance": dist,
+                }
+            )
+
+    # Sort best-first (lower distance = closer)
     out.sort(key=lambda x: (x["distance"] if x["distance"] is not None else 999999))
 
-    # Page diversity: 1 chunk per page (simple)
+    # Dedupe: 1 chunk per (doc_id, page) to increase page diversity
     seen = set()
     deduped = []
     for s in out:
-        page = (s.get("metadata") or {}).get("page")
-        key = ((s.get("metadata") or {}).get("doc_id"), page)
+        meta = s.get("metadata") or {}
+        key = (meta.get("doc_id"), meta.get("page"))
         if key in seen:
             continue
         seen.add(key)
@@ -83,8 +109,9 @@ def format_context(sources: List[Dict[str, Any]]) -> str:
 
 def enforce_citations(output: str) -> str:
     """
-    Lightweight enforcement: if model forgets citations, replace lines with a safe fallback.
-    This prevents totally uncited answers from slipping through.
+    If the model forgets citations in ANSWER / KEY THEMES / WHAT TO FOCUS,
+    replace those lines with the safe "Not enough information..." message.
+    IMPORTANT: do NOT invent page numbers like (p.?).
     """
     if not output:
         return output
@@ -110,20 +137,25 @@ def enforce_citations(output: str) -> str:
             fixed.append(line)
             continue
 
+        # Only enforce citations for the cite-required sections
         if needs_cite(line) and not cite_pattern.search(line):
-            # safe fallback
             if section == "ANSWER":
-                fixed.append("Not enough information in the provided excerpts. (p.?)")
+                fixed.append("Not enough information in the provided excerpts.")
             else:
-                fixed.append("- Not enough information in the provided excerpts. (p.?)")
+                fixed.append("- Not enough information in the provided excerpts.")
         else:
             fixed.append(line)
 
     return "\n".join(fixed)
 
 
-def answer_question(question: str, doc_id: Optional[str] = None) -> Dict[str, Any]:
-    sources = retrieve(question, k=14, doc_id=doc_id)
+def answer_question(
+    question: str,
+    doc_id: str | None = None,
+    doc_ids: list[str] | None = None,
+    route: bool = True,
+):
+    sources = retrieve(question, k=14, doc_id=doc_id, doc_ids=doc_ids)
     context = format_context(sources)
     answer = generate(question=question, context=context, sources=sources)
     answer = enforce_citations(answer)
