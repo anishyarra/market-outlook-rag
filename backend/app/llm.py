@@ -71,7 +71,8 @@ def _ollama_generate(prompt: str) -> str:
         raise RuntimeError(f"Ollama call failed: {e}")
 
 
-def _openai_generate(prompt: str, history=None) -> str:
+
+def _openai_generate(prompt: str, history: Optional[List[Dict[str, Any]]] = None) -> str:
     history = history or []
 
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -80,8 +81,6 @@ def _openai_generate(prompt: str, history=None) -> str:
 
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
     temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
-
-    # NEW: allow OpenAI-compatible providers (DeepSeek, Qwen, etc.)
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
 
     client = OpenAI(api_key=api_key, base_url=base_url)
@@ -93,19 +92,24 @@ def _openai_generate(prompt: str, history=None) -> str:
         "Never invent or guess page numbers."
     )
 
+    # Build messages cleanly
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+
+    # Include last N turns of history (keep small)
+    for m in history[-8:]:
+        role = m.get("role")
+        content = (m.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+
+    # Final user prompt (your RAG prompt with CONTEXT)
+    messages.append({"role": "user", "content": prompt})
+
     resp = client.chat.completions.create(
-    model=model,
-    temperature=temperature,
-    messages=[
-        {"role": "system", "content": system},
-        *[
-            {"role": m["role"], "content": m["content"]}
-            for m in history[-8:]  # last 8 turns
-            if m.get("role") in ("user", "assistant") and m.get("content")
-        ],
-        {"role": "user", "content": prompt},
-    ],
-)
+        model=model,
+        temperature=temperature,
+        messages=messages,
+    )
 
     return (resp.choices[0].message.content or "").strip()
 
