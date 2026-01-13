@@ -79,7 +79,10 @@ def _openai_generate(prompt: str) -> str:
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
     temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
 
-    client = OpenAI(api_key=api_key)
+    # NEW: allow OpenAI-compatible providers (DeepSeek, Qwen, etc.)
+    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
 
     system = (
         "You are a careful investment/markets analyst. "
@@ -91,14 +94,24 @@ def _openai_generate(prompt: str) -> str:
     resp = client.chat.completions.create(
         model=model,
         temperature=temperature,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
+        messages = [{"role": "system", "content": system}]
+
+        # include last N messages (keep small)
+        hist = (history or [])[-6:]
+        for m in hist:
+            if m.get("role") in ("user", "assistant") and m.get("content"):
+                messages.append({"role": m["role"], "content": m["content"]})
+
+        messages.append({"role": "user", "content": prompt})
+
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            messages=messages,
+        ),
     )
 
     return (resp.choices[0].message.content or "").strip()
-
 
 def _mock_generate(question: str, sources: List[Dict[str, Any]]) -> str:
     top = sources[:5]
@@ -119,7 +132,7 @@ def _mock_generate(question: str, sources: List[Dict[str, Any]]) -> str:
 # Main entry
 # ---------------------------
 
-def generate(question: str, context: str, sources: List[Dict[str, Any]]) -> str:
+def generate(question: str, context: str, sources: List[Dict[str, Any]], history: List[Dict[str, str]] | None = None) -> str:
     """
     LLM provider switch. Supported: MOCK, OLLAMA, OPENAI.
     """
@@ -135,34 +148,42 @@ def generate(question: str, context: str, sources: List[Dict[str, Any]]) -> str:
     )
 
     prompt = f"""You are a careful analyst answering questions about a PDF report.
-Use ONLY the CONTEXT provided. Do not use outside knowledge.
+    Use ONLY the CONTEXT provided. Do not use outside knowledge.
 
-Hard rules:
-- Every factual claim must include at least one citation like (p.7).
-- If the context is insufficient, say "Not enough information in the provided excerpts."
-- Do not invent page numbers.
-- Output exactly these headers: ANSWER, KEY THEMES, WHAT TO FOCUS ON IN 2026, GAPS.
+    Hard rules:
+    - For ANSWER / KEY THEMES / WHAT TO FOCUS ON IN 2026:
+    - Every factual claim must include at least one citation like (p.7).
+    - Do not invent page numbers.
+    - If the context is insufficient for ANSWER, say exactly:
+    "Not enough information in the provided excerpts."
+    - For GAPS:
+    - Do NOT use citations.
+    - Do NOT say "Not enough information in the provided excerpts."
+    - Write analyst-style gaps as a checklist: "Missing: <thing>. Look for: <what/where>."
+    - GAPS should be 2–5 bullets.
 
-Return EXACTLY this format:
+    Output exactly these headers: ANSWER, KEY THEMES, WHAT TO FOCUS ON IN 2026, GAPS.
 
-ANSWER:
-<2-6 sentences, each with citations>
+    Return EXACTLY this format:
 
-KEY THEMES:
-- <theme> (p.X)
+    ANSWER:
+    <2-6 sentences, each with citations OR the exact insufficient-info sentence>
 
-WHAT TO FOCUS ON IN 2026:
-- <actionable focus> (p.X)
+    KEY THEMES:
+    - <theme> (p.X)
 
-GAPS:
-- <what is missing, if anything>
+    WHAT TO FOCUS ON IN 2026:
+    - <actionable focus> (p.X)
 
-QUESTION:
-{question}
+    GAPS:
+    - Missing: <thing>. Look for: <what/where to find it>.
 
-CONTEXT:
-{src_block}
-"""
+    QUESTION:
+    {question}
+
+    CONTEXT:
+    {src_block}
+    """
 
     if provider == "OLLAMA":
         return _ollama_generate(prompt).replace("\r\n", "\n").strip()
