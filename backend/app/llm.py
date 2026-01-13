@@ -2,7 +2,7 @@
 import os
 import re
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from urllib import request as urlrequest
 from urllib.error import URLError, HTTPError
 
