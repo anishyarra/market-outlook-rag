@@ -1,0 +1,42 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# FastAPI / local data
+backend/data/
+backend/**/*.sqlite*
+backend/**/*.db
+
+# Chroma sometimes writes here
+chroma/
+*.chroma*
+
+# Node / Next
+node_modules/
+web/node_modules/
+.next/
+web/.next/
+out/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+.env
+backend/data/
+backend/data/**
+web/.next/
+web/node_modules/
+backend/__pycache__/
+**/__pycache__/
+*.sqlite
+*.db
