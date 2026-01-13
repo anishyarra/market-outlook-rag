@@ -71,7 +71,9 @@ def _ollama_generate(prompt: str) -> str:
         raise RuntimeError(f"Ollama call failed: {e}")
 
 
-def _openai_generate(prompt: str) -> str:
+def _openai_generate(prompt: str, history=None) -> str:
+    history = history or []
+
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is missing. Put it in backend/.env and restart backend.")
@@ -92,24 +94,18 @@ def _openai_generate(prompt: str) -> str:
     )
 
     resp = client.chat.completions.create(
-        model=model,
-        temperature=temperature,
-        messages = [{"role": "system", "content": system}]
-
-        # include last N messages (keep small)
-        hist = (history or [])[-6:]
-        for m in hist:
-            if m.get("role") in ("user", "assistant") and m.get("content"):
-                messages.append({"role": m["role"], "content": m["content"]})
-
-        messages.append({"role": "user", "content": prompt})
-
-        resp = client.chat.completions.create(
-            model=model,
-            temperature=temperature,
-            messages=messages,
-        ),
-    )
+    model=model,
+    temperature=temperature,
+    messages=[
+        {"role": "system", "content": system},
+        *[
+            {"role": m["role"], "content": m["content"]}
+            for m in history[-8:]  # last 8 turns
+            if m.get("role") in ("user", "assistant") and m.get("content")
+        ],
+        {"role": "user", "content": prompt},
+    ],
+)
 
     return (resp.choices[0].message.content or "").strip()
 
