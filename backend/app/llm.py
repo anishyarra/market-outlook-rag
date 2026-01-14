@@ -82,6 +82,9 @@ def _openai_generate(prompt: str, history: Optional[List[Dict[str, Any]]] = None
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
     temperature = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
+    
+    # DEBUG: Print what we're using (check Railway logs)
+    print(f"DEBUG LLM: model='{model}', base_url='{base_url}', has_key={bool(api_key)}")
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 
@@ -105,13 +108,22 @@ def _openai_generate(prompt: str, history: Optional[List[Dict[str, Any]]] = None
     # Final user prompt (your RAG prompt with CONTEXT)
     messages.append({"role": "user", "content": prompt})
 
-    resp = client.chat.completions.create(
-        model=model,
-        temperature=temperature,
-        messages=messages,
-    )
-
-    return (resp.choices[0].message.content or "").strip()
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            messages=messages,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        # Better error message
+        error_msg = str(e)
+        if "404" in error_msg or "NotFound" in error_msg:
+            raise RuntimeError(
+                f"Model '{model}' not found. Check OPENAI_MODEL in Railway. "
+                f"Try: Qwen/Qwen2.5-72B-Instruct-Turbo or Qwen/Qwen2.5-7B-Instruct-Turbo"
+            )
+        raise RuntimeError(f"LLM API error: {error_msg}")
 
 def _mock_generate(question: str, sources: List[Dict[str, Any]]) -> str:
     top = sources[:5]
