@@ -30,9 +30,8 @@ if ENV_PATH.exists():
 
 app = FastAPI(title="Market Outlook RAG (no-pdf)")
 
-# --- CORS (allow Vercel frontend + local dev) ---
-# Get from env or use defaults
-default_origins = [
+# Simple, direct CORS - no complex logic
+cors_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:3001",
@@ -41,18 +40,17 @@ default_origins = [
     "https://market-outlook-rag-ashen.vercel.app",
 ]
 
-# Get additional origins from environment
+# Add from environment if set
 env_origins = os.getenv("CORS_ORIGINS", "")
-cors_origins = default_origins.copy()
 if env_origins:
-    cors_origins.extend([o.strip() for o in env_origins.split(",") if o.strip()])
-
-# Remove duplicates
-cors_origins = list(set(cors_origins))
+    for origin in env_origins.split(","):
+        origin = origin.strip()
+        if origin and origin not in cors_origins:
+            cors_origins.append(origin)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=["*"],  # Allows everything
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -123,17 +121,24 @@ async def upload(file: UploadFile = File(...)):
 
 @app.post("/chat")
 async def chat(payload: ChatPayload):
-    question = (payload.question or "").strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="Missing question")
+    try:
+        question = (payload.question or "").strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Missing question")
 
-    return answer_question(
-        question,
-        doc_id=payload.doc_id,
-        doc_ids=payload.doc_ids,
-        route=payload.route,
-        history=payload.history or [],
-    )
+        return answer_question(
+            question,
+            doc_id=payload.doc_id,
+            doc_ids=payload.doc_ids,
+            route=payload.route,
+            history=payload.history or [],
+        )
+    except Exception as e:
+        # Log the error for debugging
+        import traceback
+        print(f"Chat error: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 @app.get("/debug-main")
 def debug_main():
