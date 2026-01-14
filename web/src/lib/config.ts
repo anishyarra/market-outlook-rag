@@ -1,1 +1,1 @@
-export const BACKEND_URL = "https://market-outlook-rag-5.onrender.com";
+export const BACKEND_URL = "https://market-outlook-rag-production-3d55.up.railway.app";
