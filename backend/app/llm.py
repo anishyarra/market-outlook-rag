@@ -189,6 +189,6 @@ def generate(question: str, context: str, sources: List[Dict[str, Any]], history
         return _ollama_generate(prompt).replace("\r\n", "\n").strip()
 
     if provider == "OPENAI":
-        return _openai_generate(prompt).replace("\r\n", "\n").strip()
+        return _openai_generate(prompt, history).replace("\r\n", "\n").strip()
 
     raise RuntimeError(f"Unknown LLM_PROVIDER={provider}. Use MOCK, OLLAMA, or OPENAI.")
