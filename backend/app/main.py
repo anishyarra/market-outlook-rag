@@ -36,7 +36,7 @@ cors_origins = [
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
-    "https://market-outlook-rag-ashen.vercel.app",
+    "https://market-outlook-rag-sewu.vercel.app",
 ]
 
 # Allow override via env var if needed
