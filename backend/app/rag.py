@@ -154,9 +154,20 @@ def answer_question(
     doc_id: str | None = None,
     doc_ids: list[str] | None = None,
     route: bool = True,
+    history: list[dict[str, str]] | None = None,  # Add history parameter
 ):
     sources = retrieve(question, k=14, doc_id=doc_id, doc_ids=doc_ids)
     context = format_context(sources)
-    answer = generate(question=question, context=context, sources=sources)
+    
+    # Convert ChatMessage objects to dicts if needed
+    history_dicts = None
+    if history:
+        history_dicts = [
+            {"role": msg.get("role") if isinstance(msg, dict) else msg.role, 
+             "content": msg.get("content") if isinstance(msg, dict) else msg.content}
+            for msg in history
+        ]
+    
+    answer = generate(question=question, context=context, sources=sources, history=history_dicts)
     answer = enforce_citations(answer)
     return {"answer": answer, "sources": sources}
