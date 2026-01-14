@@ -31,23 +31,29 @@ if ENV_PATH.exists():
 app = FastAPI(title="Market Outlook RAG (no-pdf)")
 
 # --- CORS (allow Vercel frontend + local dev) ---
-cors_origins = [
+# Get from env or use defaults
+default_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
     "https://market-outlook-rag-sewu.vercel.app",
+    "https://market-outlook-rag-ashen.vercel.app",
 ]
 
-# Allow override via env var if needed
+# Get additional origins from environment
 env_origins = os.getenv("CORS_ORIGINS", "")
+cors_origins = default_origins.copy()
 if env_origins:
     cors_origins.extend([o.strip() for o in env_origins.split(",") if o.strip()])
+
+# Remove duplicates
+cors_origins = list(set(cors_origins))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=False,  # ✅ Changed to False
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
