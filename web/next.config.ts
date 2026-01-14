@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  // Force dynamic rendering for all pages
+  output: 'standalone',
 };
 
 export default nextConfig;
