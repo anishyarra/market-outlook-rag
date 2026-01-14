@@ -18,6 +18,9 @@ from dotenv import load_dotenv
 import glob
 from fastapi.responses import FileResponse
 
+from pydantic import BaseModel
+from typing import Optional, List, Literal
+
 from .store import get_collection
 
 # Load .env from repo root (market-outlook-rag/market-outlook-rag/.env)
@@ -27,25 +30,32 @@ if ENV_PATH.exists():
 
 app = FastAPI(title="Market Outlook RAG (no-pdf)")
 
+# --- CORS (allow Vercel frontend + local dev) ---
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,https://market-outlook-rag-ashen.vercel.app"
+).split(",")
+
+cors_origins = [o.strip() for o in cors_origins if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "https://market-outlook-rag-ashen.vercel.app",
-    ],
-    allow_credentials=False,
+    allow_origins=cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
 
 class ChatPayload(BaseModel):
     question: str
     doc_id: Optional[str] = None
     doc_ids: Optional[List[str]] = None
-    route: bool = True  # kept for compatibility (not used in single-doc mode)
+    route: bool = True
+    history: Optional[List[ChatMessage]] = None
 
 @app.get("/health")
 def health():
@@ -110,6 +120,7 @@ async def chat(payload: ChatPayload):
         doc_id=payload.doc_id,
         doc_ids=payload.doc_ids,
         route=payload.route,
+        history=payload.history or [],
     )
 
 @app.get("/debug-main")
