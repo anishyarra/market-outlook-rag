@@ -1,10 +1,24 @@
-# Report Intelligence (RAG) — Next.js + FastAPI
+# Market Outlook RAG
 
-A lightweight “report intelligence” prototype:
+Upload market & research PDFs, ask questions, and get **grounded answers with page-level citations** that jump straight to the source. A full-stack retrieval-augmented generation app (Next.js + FastAPI).
 
-- Upload PDFs → auto-index (page-aware chunks + metadata)
-- Ask questions → grounded answers using retrieved excerpts (RAG)
-- Page citations + clickable sources that jump to the PDF viewer
+![App screenshot](image.png)
+
+## Why it's built differently
+
+Most "chat with your PDF" demos hallucinate and can't show their work. This one is built for trust:
+
+- Answers are grounded **only** in retrieved excerpts (RAG), not the model's memory.
+- Every claim carries a **page citation** — clicking a source **jumps to that page** in the in-app PDF viewer.
+- Toggle documents **active / off** to control exactly what's in the retrieval set.
+
+## How it works
+
+- **Ingestion** — PDFs are parsed into page-aware chunks with metadata, embedded, and stored in a **Chroma** vector store.
+- **Retrieval + generation** — a question retrieves the most relevant excerpts; the LLM answers from those and returns citations.
+- **Full-stack** — **FastAPI** backend (ingestion, retrieval, API) + **Next.js** (App Router) frontend with a PDF viewer; deploys on Railway.
+
+**Stack:** Next.js (App Router) · FastAPI · Chroma · OpenAI · Railway
 
 ---
 
